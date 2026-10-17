@@ -1,0 +1,35 @@
+{
+  "name": "clutterbreaker",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "tsx --env-file=.env src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielvance1/ClutterBreaker.git"
+  },
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/danielvance1/ClutterBreaker/issues"
+  },
+  "homepage": "https://github.com/danielvance1/ClutterBreaker#readme",
+  "private": true,
+  "dependencies": {
+    "express": "^5.3.0",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
