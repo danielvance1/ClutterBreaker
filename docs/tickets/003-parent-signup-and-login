@@ -1,0 +1,143 @@
+# Ticket 003: Parent signup (creates a family), login, and cookie sessions
+
+## Goal
+
+Let a parent sign up, which creates their family at the same time, log in, and stay logged in with a cookie session. This ticket also builds the checks later tickets use to protect endpoints (`requireAuth` and `requireParent`).
+
+## Context
+
+- Every family has at least one parent, so a family is only created when a parent signs up. This is the only way to become a parent in this ticket. Another parent can join an existing family only through an email invite (ticket 004). Nobody can ever join as a parent with the family code.
+- We use cookie sessions, not tokens. The browser holds a random id in an httpOnly cookie, and the server stores only a SHA-256 hash of it. No cookie-signing secret is needed because the id is random, not signed.
+- `families`, `users`, and their repos exist from ticket 002. `families.join_code` is the "family code" kids will type to find their family (ticket 005). The column keeps the name `join_code`, but call it the family code in user-facing text. Signup must generate one.
+- The `sessions` table is for any user. Kids get sessions in ticket 005 (30 days with "remember this device", about 8 hours without), so `createSession` takes an explicit `expiresAt` and nothing in the session code assumes a parent.
+- Design doc sections: 6 (rules, accounts and sessions), 7 (data model), 8 (API sketch), and 14 (integrity and security). Read `CLAUDE.md` first.
+
+## In scope
+
+1. Create branch `ticket/003-parent-signup-login` from `main`.
+
+2. **Dependencies** (justify each in the PR): `argon2` (password hashing, argon2id), `cookie-parser` plus `@types/cookie-parser` (reading cookies), `zod` (validating request bodies; every later ticket needs this).
+
+3. **`withTransaction`** in `src/db.ts` next to the pool: `withTransaction(fn)` borrows one connection, runs `BEGIN`, calls `fn(client)`, commits if it succeeds, rolls back if it throws (rethrowing the error), and always releases the connection.
+
+4. **Migration** `create_sessions`, with a working `down`:
+   - `sessions`: `id` integer identity primary key; `user_id` integer not null references `users(id)` on delete cascade; `token_hash` text not null unique; `created_at` timestamptz not null default `now()`; `expires_at` timestamptz not null
+   - Index on `user_id`
+
+5. **Repo** `src/repos/sessions.ts` (same pattern as ticket 002: `db` first argument, explicit columns, parameterized):
+   - `createSession(db, { userId, tokenHash, expiresAt })`
+   - `findUserByActiveSession(db, tokenHash)` returns `User | null`. It joins `users` and only matches rows where `expires_at > now()`. It never returns a hash.
+   - `deleteSession(db, tokenHash)`
+
+6. **Helpers** in `src/lib/`:
+   - `hashPassword(password)` and `verifyPassword(hash, password)` using argon2id
+   - Session token generation (32 random bytes from `crypto.randomBytes`, base64url) and `hashToken(token)` (SHA-256, hex)
+   - `generateJoinCode()`: 8 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no look-alike characters), using `crypto.randomInt`
+
+7. **Endpoints** in `src/routes/auth.ts`. Errors are JSON shaped `{ "error": "message" }`.
+
+   `POST /auth/signup`, body `{ email, password, displayName, familyName }`
+   - Validation with a zod schema and `safeParse`: email is a valid address, 254 characters or fewer; password is 10 to 128 characters; `displayName` and `familyName` are trimmed, 1 to 50 characters. Failure returns 400 and writes nothing. Unknown keys in the body (such as `role` or `familyId`) are ignored, never used.
+   - Inside one `withTransaction`: create the family (with a generated join code; if the insert fails because the join code already exists, generate a new one and retry up to 5 times), then create the parent with the hashed password. Then create a session and set the cookie.
+   - Returns 201 with `{ user, family: { id, name, joinCode } }`.
+   - If the email is already used (compared case-insensitively), return 409 `Email already in use`. The whole transaction rolls back, so no family is left behind. Tell a duplicate-email violation apart from a join-code collision using the constraint name on the Postgres error.
+
+   `POST /auth/login`, body `{ email, password }`
+   - Parents only (kids log in with the family code, name, and PIN in ticket 005).
+   - Success returns 200 `{ user }` and sets the cookie.
+   - A wrong password and an unknown email must give the exact same 401 response, `Invalid email or password`. When the email is unknown, still run a password verification against a dummy hash so the response takes about as long either way.
+
+   `POST /auth/logout`: deletes the session row, clears the cookie, returns 204. It also returns 204 when there is no session.
+
+   `GET /auth/me`: returns 200 `{ user }` for a valid session, 401 otherwise.
+
+8. **Middleware** in `src/middleware/auth.ts`:
+   - `attachUser`: reads the session cookie, looks up the session, and sets `req.user` (add the typing for `req.user`). It never errors for a missing or bad cookie; it just leaves `req.user` unset.
+   - `requireAuth`: 401 if there is no user.
+   - `requireParent`: 401 if there is no user, 403 if the user is not a parent.
+   - Mount `attachUser` for the whole app.
+
+9. **Cookie settings**: name `session`, `httpOnly`, `sameSite: 'lax'`, path `/`, `secure` only when `NODE_ENV` is `production` (browsers drop Secure cookies on plain http in dev), and a fixed 30-day lifetime. The session row's `expires_at` matches. The lifetime is a named constant.
+
+10. **`CLAUDE.md`**: add exactly these lines and change nothing else.
+    - Layout: `src/middleware/` : Express middleware
+    - Hard rules:
+      - Inside a `withTransaction` callback, only use the `client` it provides. Never use the pool there.
+      - State-changing endpoints use POST, PATCH, or DELETE, never GET (cookie sessions rely on this).
+      - Never log or return passwords, hashes, or session tokens. The only place a session token appears is the cookie.
+      - Respond 401 when the caller isn't logged in or credentials are wrong, and 403 when they are logged in but not allowed.
+
+11. **`README.md`**: add an "Auth" section listing the four endpoints, each with a `curl` example.
+
+## Out of scope
+
+- Joining an existing family, parent invites, and login throttling for parents (ticket 004)
+- Kid profiles, PIN login, PIN lockouts, "remember this device" (ticket 005)
+- The first-run tutorial quest and starter reward (ticket 011)
+- Looking up a family by its code (ticket 005)
+- Password reset, changing a password, email verification
+- Logging out of all devices, deleting expired session rows
+- Any frontend, and CORS (the app is same-origin)
+- Any dependency not listed above
+
+## Acceptance criteria
+
+Signup
+- [ ] A valid signup returns 201, with a parent (role `parent`, no hash fields) and a family including its join code. Exactly one family, one parent, and one session row exist afterward.
+- [ ] The response sets a `session` cookie that is `HttpOnly` with `SameSite=Lax`.
+- [ ] The `sessions` table stores a SHA-256 hash, never the raw cookie value.
+- [ ] A duplicate email, even in a different letter case, returns 409 and leaves no extra family row.
+- [ ] A bad email, a password under 10 characters, or an empty family name returns 400 and writes nothing.
+- [ ] A join code collision is retried (tested with a fake generator).
+- [ ] Stored passwords are argon2id hashes.
+- [ ] A signup body that includes `role: "kid"` or a `familyId` still creates a new family with a parent. Those fields are ignored.
+
+Login and logout
+- [ ] Correct credentials return 200 and set the cookie.
+- [ ] A wrong password and an unknown email return 401 with identical bodies.
+- [ ] Logout returns 204, deletes the session row, and clears the cookie. `/auth/me` afterward returns 401.
+
+Sessions and middleware
+- [ ] `/auth/me` returns the user with a valid cookie, and 401 with no cookie, a garbage cookie, or an expired session (tested by inserting a session with a past `expires_at`).
+- [ ] `requireAuth` returns 401 without a session. `requireParent` returns 403 for a kid's session (create a kid and a session directly through the repos in the test) and lets a parent through. Test the middleware on throwaway routes mounted inside the test file, not on the real app.
+
+Transactions and general
+- [ ] `withTransaction` commits on success, and rolls back everything when the callback throws (tested).
+- [ ] No response or log line contains a password, a hash, or a session token (other than the cookie itself).
+- [ ] `npm run typecheck` and `npm test` pass.
+- [ ] `CLAUDE.md` and `README.md` are updated as described, and the PR follows the format in `CLAUDE.md`.
+
+## How to verify
+
+```bash
+git checkout ticket/003-parent-signup-login
+npm install
+npm run db:up
+npm run typecheck
+npm test
+npm run dev        # in one terminal; the rest in another
+
+curl -i -c jar.txt -X POST localhost:3000/auth/signup \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"mom@example.com","password":"correct-horse-battery","displayName":"Mom","familyName":"Vance"}'
+curl -b jar.txt localhost:3000/auth/me                         # the user
+curl -i -b jar.txt -X POST localhost:3000/auth/logout          # 204
+curl -i -b jar.txt localhost:3000/auth/me                      # 401
+curl -i -X POST localhost:3000/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"mom@example.com","password":"wrong-password"}' # 401
+docker compose exec db psql -U app -d appdb \
+  -c 'select id, user_id, left(token_hash, 8) as hash_start, expires_at from sessions'
+```
+
+## Review focus
+
+Read in this order:
+1. The `sessions` migration.
+2. `withTransaction`, especially the rollback path and that the connection is always released.
+3. The helpers: argon2id, `randomBytes`, and that only the hash of the token reaches the database.
+4. The signup route: everything inside one transaction, and the duplicate email and join code errors told apart correctly.
+5. The cookie flags.
+6. The session lookup query: it must check `expires_at > now()`.
+7. The login route: identical errors for a wrong password and an unknown email.
+8. The middleware tests, especially the kid getting a 403.
