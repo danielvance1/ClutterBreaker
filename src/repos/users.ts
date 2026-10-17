@@ -9,7 +9,7 @@ export type User = {
   createdAt: Date;
 };
 
-type UserRow = {
+export type UserRow = {
   id: number;
   family_id: number;
   role: 'parent' | 'kid';
@@ -19,7 +19,7 @@ type UserRow = {
 };
 
 // Hashes are never selected here; only findParentWithHashByEmail reads one.
-function toUser(row: UserRow): User {
+export function toUser(row: UserRow): User {
   return {
     id: row.id,
     familyId: row.family_id,
