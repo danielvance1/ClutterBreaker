@@ -37,13 +37,18 @@ function cookieOptions() {
   };
 }
 
-async function startSession(db: Db, res: Response, userId: number) {
+// Returns the raw token; the caller sets the cookie once any surrounding transaction commits.
+async function createSessionToken(db: Db, userId: number): Promise<string> {
   const token = generateSessionToken();
   await createSession(db, {
     userId,
     tokenHash: hashToken(token),
     expiresAt: new Date(Date.now() + SESSION_LIFETIME_MS),
   });
+  return token;
+}
+
+function setSessionCookie(res: Response, token: string) {
   res.cookie(SESSION_COOKIE, token, { ...cookieOptions(), maxAge: SESSION_LIFETIME_MS });
 }
 
@@ -98,9 +103,10 @@ export function createAuthRouter(
           email,
           passwordHash,
         });
-        await startSession(client, res, user.id);
-        return { user, family };
+        const token = await createSessionToken(client, user.id);
+        return { user, family, token };
       });
+      setSessionCookie(res, result.token);
       res.status(201).json({
         user: result.user,
         family: { id: result.family.id, name: result.family.name, joinCode: result.family.joinCode },
@@ -127,7 +133,7 @@ export function createAuthRouter(
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
-    await startSession(pool, res, found.id);
+    setSessionCookie(res, await createSessionToken(pool, found.id));
     const { passwordHash: _omit, ...user } = found;
     res.status(200).json({ user });
   });

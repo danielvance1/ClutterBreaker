@@ -62,6 +62,7 @@ describe('POST /auth/signup', () => {
       .send({ ...valid, email: 'MOM@Example.com' })
       .expect(409);
     expect(res.body).toEqual({ error: 'Email already in use' });
+    expect(res.headers['set-cookie']).toBeUndefined();
     expect(await count('families')).toBe(1);
   });
 
