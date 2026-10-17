@@ -6,7 +6,11 @@
     "dev": "tsx watch --env-file=.env src/server.ts",
     "start": "tsx --env-file=.env src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:new": "dbmate --no-dump-schema new",
+    "db:up": "dbmate --no-dump-schema up",
+    "db:down": "dbmate --no-dump-schema rollback",
+    "db:status": "dbmate --no-dump-schema status"
   },
   "repository": {
     "type": "git",
@@ -27,6 +31,7 @@
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
+    "dbmate": "^2.36.0",
     "supertest": "^7.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
