@@ -20,8 +20,8 @@ I'm building ClutterBreaker, a chores app that plays like a game. Parents post c
 
 - **Dev machine:** Linux laptop (repurposed Windows laptop), VS Code.
 - **Backend:** Node 22 (via nvm), TypeScript run with `tsx`, Express, and `pg` with hand-written parameterized SQL. No ORM.
-- **Database:** PostgreSQL 16 in Docker (`docker-compose.yml`), schema in `db/schema.sql`. Add a migration tool (`dbmate` or `node-pg-migrate`) once the schema starts changing. Connection string comes from `DATABASE_URL` in an uncommitted `.env`.
-- **Frontend:** React + TypeScript + Tailwind via Vite, in `~/myapi/client`. The dev server runs on 5173 and proxies API calls to Express on 3000. In production, Express serves `client/dist`.
+- **Database:** PostgreSQL 16 in Docker (`docker-compose.yml`), schema in `db/migrations/`. Add a migration tool (`dbmate` or `node-pg-migrate`) once the schema starts changing. Connection string comes from `DATABASE_URL` in an uncommitted `.env`.
+- **Frontend:** React + TypeScript + Tailwind via Vite, in `client/`. The dev server runs on 5173 and proxies API calls to Express on 3000. In production, Express serves `client/dist`.
 - **Delivery:** mobile-first PWA (`vite-plugin-pwa`), installed on iPhones through Safari's Add to Home Screen. No App Store for the MVP.
 - **Later:** Capacitor to wrap the same code as a native app, and Phaser for real-time sprite mini-games.
 - **CI/CD:** deferred. The plan is GitHub Actions deploying the `release` branch to a cheap VPS with Docker Compose, behind HTTPS (Caddy).
@@ -238,5 +238,4 @@ The app only works if people notice it, so this matters.
 
 - **Done:** Linux dev environment, Node/TypeScript/Express backend, Postgres in Docker, and a toy `tasks` table with working GET, POST, and PATCH endpoints plus a plain HTML test page.
 - **Not done:** the Vite client isn't scaffolded yet, and there's no auth or real schema.
-- The toy `tasks` code gets replaced by the real schema and endpoints in Phase 1.
 
