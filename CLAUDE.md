@@ -20,6 +20,7 @@ Full design (data model, rules, API sketch, screens, chest odds): `docs/design.m
 - `src/repos/` : all SQL, one file per feature area
 - `src/routes/` : HTTP handlers (added as features arrive)
 - `src/lib/` : other helpers
+- `src/middleware/` : Express middleware
 
 ## Commands
 
@@ -46,6 +47,10 @@ Full design (data model, rules, API sketch, screens, chest odds): `docs/design.m
 - Never edit a migration that has been merged to `main`; add a new one. Every migration has working `up` and `down` sections, and a ticket that changes the schema adds its own migration.
 - Tests use the real test database. Do not mock the database. Call `resetDb()` in `beforeEach`. Tests must never connect to the dev database.
 - Never return password or PIN hashes from a function unless its name contains `WithHash`. Never put hashes in API responses or logs.
+- Inside a `withTransaction` callback, only use the `client` it provides. Never use the pool there.
+- State-changing endpoints use POST, PATCH, or DELETE, never GET (cookie sessions rely on this).
+- Never log or return passwords, hashes, or session tokens. The only place a session token appears is the cookie.
+- Respond 401 when the caller isn't logged in or credentials are wrong, and 403 when they are logged in but not allowed.
 
 ## Code style
 
