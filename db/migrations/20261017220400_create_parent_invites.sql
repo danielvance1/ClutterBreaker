@@ -7,7 +7,7 @@ CREATE TABLE parent_invites (
   token_hash text NOT NULL UNIQUE,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL,
-  used_at timestamptz, -- NULL means not used yet.
+  used_at timestamptz -- NULL means not used yet.
 );
 
 CREATE INDEX parent_invites_family_id_idx ON parent_invites (family_id);

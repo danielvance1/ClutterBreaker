@@ -34,22 +34,37 @@ describe('create invite', () => {
   it('create invite returns invite and lowercased email, not tokenHash', async () => {
     const family = await createFamily(pool, {...familyDetails});
     const parent = await createParent(pool, {...parentDetails});
+
+    console.log((parent == null) ? "parent was null" : "parent was not null");
+    console.log((family == null) ? "family was null" : "family was not null");
+
     const invite = await createInvite(pool, { familyId: family.id, invitedBy: parent.id, ...dadInviteDetails() });
     expect(invite).toMatchObject({ inviteId: 1, email: 'dad@gmail.com'});
     expect(invite).not.toHaveProperty('tokenHash');
   });
 
   it('when family does not exist, invite is not created', async () => {
-    const parent = await createParent(pool, {...parentDetails});
-    const invite = await createInvite(pool, { familyId: 1, invitedBy: parent.id, ...dadInviteDetails() });
+    const family = await createFamily(pool, {...familyDetails});
+    const parent = await createParent(pool, {...parentDetails, familyId: family.id});
+    const invite = await createInvite(pool, { familyId: 2, invitedBy: parent.id, ...dadInviteDetails() });
+
     expect(invite).toBeNull();
   });
 
   it('when invite initiator does not exist, invite is not created', async () => {
     const family = await createFamily(pool, {...familyDetails});
     const invite = await createInvite(pool, { familyId: family.id, invitedBy: 1, ...dadInviteDetails() });
+    
     expect(invite).toBeNull();
   });
+
+  it('parent cannot create an invite for a different family', async () => {
+    const family1 = await createFamily(pool, {...familyDetails});
+    const family2 = await createFamily(pool, {...familyDetails, joinCode: '5678EFGH'});
+    const parent = await createParent(pool, {...parentDetails, familyId: family1.id});
+    const invite = await createInvite(pool, { familyId: family2.id, invitedBy: parent.id, ...dadInviteDetails() });
+    expect(invite).toBeNull();
+  })
 });
 
 describe('claim invite', () => {
@@ -70,7 +85,7 @@ describe('claim invite', () => {
     );
 
     expect(usedAt).not.toBeNull();
-    expect(usedAt).toBeTypeOf(typeof(Date));
+    expect(usedAt).toBeInstanceOf(Date);
   });
 
   it('invite cannot be claimed twice', async () => {
@@ -115,12 +130,13 @@ describe('claim invite', () => {
     const parent = await createParent(pool, {...parentDetails});
     
     await createInvite(pool, { familyId: family.id, invitedBy: parent.id, email: 'DAD@gmail.com', tokenHash: 'token-hash', expiresAt: future() });
-    const invite2 = await createInvite(pool, { familyId: family.id, invitedBy: parent.id, email: 'DAD@gmail.com', tokenHash: 'token-hash', expiresAt: future() });
     
-    expect(invite2).toBeNull();
+    await expect(
+      createInvite(pool, { familyId: family.id, invitedBy: parent.id, email: 'DAD@gmail.com', tokenHash: 'token-hash', expiresAt: future() })
+    ).rejects.toMatchObject({ code: '23505' });
   });
 
-   it('deleting a family deletes its invites', async () => {
+  it('deleting a family deletes its invites', async () => {
     const family = await createFamily(pool, {...familyDetails});
     const parent = await createParent(pool, {...parentDetails});
     
@@ -133,6 +149,12 @@ describe('claim invite', () => {
        WHERE id = $1`,
       [family.id]);
 
-    expect(invite).toBeNull();
+    const { rows: [afterDelete] } = await pool.query<{ id: number }>(
+      `SELECT id FROM parent_invites
+       WHERE id = $1`,
+      [invite!.inviteId]
+    )
+
+    expect(afterDelete).toBeUndefined();
   });
 });

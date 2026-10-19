@@ -1,4 +1,5 @@
 import { Db } from './db.js';
+import { findUserById } from './users.js';
 
 export async function createInvite(
   db: Db,
@@ -10,10 +11,15 @@ export async function createInvite(
     expiresAt: Date;
   }
 ): Promise<{ inviteId: number, email: string } | null> {
-  const { rows: [firstRow] } = await db.query<{ invite_id: number, email: string }>(
+  const user = await findUserById(db, input.invitedBy);
+  if(user?.familyId !== input.familyId) {
+    return null;
+  }
+
+  const { rows: [firstRow] } = await db.query<{ id: number, email: string }>(
     `INSERT INTO parent_invites (family_id, invited_by, email, token_hash, expires_at)
      VALUES ($1, $2, $3, $4, $5)
-     RETURNING (id, email)`,
+     RETURNING id, email`,
     [
       input.familyId, 
       input.invitedBy, 
@@ -23,7 +29,7 @@ export async function createInvite(
     ]
   );
 
-  return firstRow ? { inviteId: firstRow.invite_id, email: firstRow.email } : null;
+  return firstRow ? { inviteId: firstRow.id, email: firstRow.email } : null;
 }
 
 export async function claimInvite(
