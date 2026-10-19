@@ -35,9 +35,6 @@ describe('create invite', () => {
     const family = await createFamily(pool, {...familyDetails});
     const parent = await createParent(pool, {...parentDetails});
 
-    console.log((parent == null) ? "parent was null" : "parent was not null");
-    console.log((family == null) ? "family was null" : "family was not null");
-
     const invite = await createInvite(pool, { familyId: family.id, invitedBy: parent.id, ...dadInviteDetails() });
     expect(invite).toMatchObject({ inviteId: 1, email: 'dad@gmail.com'});
     expect(invite).not.toHaveProperty('tokenHash');
@@ -64,7 +61,9 @@ describe('create invite', () => {
     const parent = await createParent(pool, {...parentDetails, familyId: family1.id});
     const invite = await createInvite(pool, { familyId: family2.id, invitedBy: parent.id, ...dadInviteDetails() });
     expect(invite).toBeNull();
-  })
+  });
+
+  // try to create an invite as a kid
 });
 
 describe('claim invite', () => {
@@ -101,19 +100,18 @@ describe('claim invite', () => {
 
   it.each([
     { name: "wrong token hash", tokenHash: "token-hash-wrong", email: "Dad@gmail.com", expiresAt: future() },
-    { name: "wrong email", tokenHash: "token-hash", email: "wrong@gmail.com", expiresAt: future() },
-    { name: "wrong email", tokenHash: "token-hash", email: "wrong@gmail.com", expiresAt: new Date(Date.now() - 60000) }
+    { name: "expired invite", tokenHash: "token-hash", email: "dad@gmail.com", expiresAt: new Date(Date.now() - 60000) }
   ])('requests with @name', async ( { tokenHash, email, expiresAt } ) => {
     const family = await createFamily(pool, {...familyDetails});
     const parent = await createParent(pool, {...parentDetails});
     
-    await createInvite(pool, { familyId: family.id, invitedBy: parent.id, email: email, tokenHash: tokenHash, expiresAt: expiresAt });
-    const inviteAttempt = await claimInvite(pool, {tokenHash: 'token-hash', email: 'Dad@gmail.com'});
+    await createInvite(pool, { familyId: family.id, invitedBy: parent.id, email: 'Dad@gmail.com', tokenHash: 'token-hash', expiresAt: expiresAt });
+    const inviteAttempt = await claimInvite(pool, {tokenHash: tokenHash, email: email});
 
     expect(inviteAttempt).toBeNull();
   });
 
-  it('invite can still be claimed after a failed attempt', async () => {
+  it('invite can still be claimed after a wrong email attempt', async () => {
     const family = await createFamily(pool, {...familyDetails});
     const parent = await createParent(pool, {...parentDetails});
     
